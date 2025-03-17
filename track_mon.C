@@ -142,7 +142,7 @@ void track_mon(int runno, int evtnum)
   c->Update();
   
   
-  c->Print(Form("%d_%d.pdf", runno, evtnum));
+  //  c->Print(Form("%d_%d.pdf", runno, evtnum));
   for(int i=0; i<12; i++){
         cout<< hex << clk_cnt[i]<<endl;
   }

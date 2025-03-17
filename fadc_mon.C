@@ -1,5 +1,5 @@
-void fadc_mon(int runno, int evtcnt)
-{
+#include <algorithm>
+void fadc_mon(int runno, int evtcnt){
   gStyle->SetPalette(56);
   
   TFile *file = new TFile(Form("./rootfile/MAIKo_%05d.root",runno), "read");
@@ -15,48 +15,20 @@ void fadc_mon(int runno, int evtcnt)
   TCanvas *c2 = new TCanvas("c2", "c2", 1000, 500);
   c1->Divide(6,4);
   c2->Divide(6,4);
-  
-  //TPad *pad_a[6];
-  //TPad *pad_c[6];
-
-  /*
-  TPad *pad_a0 = new TPad("pad_a0", "pad_a0", 0, 0.5, 0.15, 1);
-  TPad *pad_a1 = new TPad("pad_a1", "pad_a1", 0.15, 0.5, 0.3, 1);
-  TPad *pad_a2 = new TPad("pad_a2", "pad_a2", 0.3, 0.5, 0.45, 1);
-  TPad *pad_a3 = new TPad("pad_a3", "pad_a3", 0.45, 0.5, 0.6, 1);
-  TPad *pad_a4 = new TPad("pad_a4", "pad_a4", 0.6, 0.5, 0.75, 1);
-  TPad *pad_a5 = new TPad("pad_a5", "pad_a5", 0.75, 0.5, 0.9, 1);
-
-  TPad *pad_c0 = new TPad("pad_c0", "pad_c0", 0, 0, 0.15, 0.5);
-  TPad *pad_c1 = new TPad("pad_c1", "pad_c1", 0.15, 0, 0.3, 0.5);
-  TPad *pad_c2 = new TPad("pad_c2", "pad_c2", 0.3, 0, 0.45, 0.5);
-  TPad *pad_c3 = new TPad("pad_c3", "pad_c3", 0.45, 0, 0.6, 0.5);	
-  TPad *pad_c4 = new TPad("pad_c4", "pad_c4", 0.6, 0, 0.75, 0.5);
-  TPad *pad_c5 = new TPad("pad_c5", "pad_c5", 0.75, 0, 0.9, 0.5);
-  */
+  TCanvas *c3 = new TCanvas("c3", "c3", 1000, 600);
   
   TH2D *fadc_a[24];
   TH2D *fadc_c[24];
+double fadc_c_min[24]; // Array to store minimum values
+double fadc_c_bl[24];  // Array to store baseline values
+double fadc_c_max[24]; // Array to store maximum values
 
   for(int i=0; i<24; i++){
 
     int j = 6*(i%4)+i/4+1;
-    
-    //pad_a[i]= new TPad(Form("pad_a%d",i), "pad_a", i*0.15, 0.5, 0.15*(i+1), 1);
-    //pad_c[i]= new TPad(Form("pad_c%d",i), "pad_c", i*0.15, 0, 0.15*(i+1), 0.5);
-    
-    fadc_a[i]= new TH2D(Form("fadc_a%d",i), Form("fadc_a%d",i), 2048, 0, 1025, 800, 0, 800);
-    fadc_c[i]= new TH2D(Form("fadc_c%d",i), Form("fadc_c%d",i), 2048, 0, 1025, 800, 0, 800);
-  
-  
-  /*
-  pad_c->SetTopMargin(0.02);
-  pad_c->SetBottomMargin(0.12);
-  pad_c->SetRightMargin(0.1);
-  pad_c->SetLeftMargin(0.1);
-  pad_c->Draw();
-  pad_c->SetTicks(1);
-  */
+
+    fadc_a[i]= new TH2D(Form("fadc_a%d",i), Form("fadc_a%d",i), 1024, 0, 1023, 1024, 0, 1023);
+    fadc_c[i]= new TH2D(Form("fadc_c%d",i), Form("fadc_c%d",i), 1024, 0, 1023, 1024, 0, 1023);
   
   TLatex *title = new TLatex();
   title->SetTextFont(132);
@@ -66,68 +38,161 @@ void fadc_mon(int runno, int evtcnt)
   tree->Draw(">>elist",Form("evt_cnt==%d",evtcnt));
   TEventList *elist = (TEventList*)gDirectory->Get("elist");
   tree->GetEntry(elist->GetEntry(0));
-  //  c->Clear();                                                                    
-
-    
+  
     fadc_a[i]->Reset();
     fadc_c[i]->Reset();
-        
+    fadc_c_min[i] = DBL_MAX;
+   // fadc_c_max[i] = -DBL_MAX; // Initialize to the lowest possible value
+    double sum = 0;
+    int baseline_cnt = 0;// Initialize to the lowest possible value
+    int minIndex = -1; // 存储最小值的索引
     for(int clk=0; clk<1025; clk++){
-      //      for(int ch=0; ch<24; ch++){
-      
-	//int ch2;   
-	//ch2 = ((ch/4+1)*4)-(ch%4) -1;
-   	//int ch_to_strp;
 	    
       fadc_a[i]->Fill(clk,fadc_data[0][clk][i]);
-	//printf("fadc= %u\n",fadc_data[0][clk][0]);
+
 	
       fadc_c[i]->Fill(clk,fadc_data[1][clk][i]);
-	//printf("fadc= %u",fadc_data[1][0][clk]);
-	
-	//	}
+
+
+        // 如果当前值比上一个值大，则可能是局部最大值
+        double currentValue = fadc_data[1][clk][i];
+        if(currentValue < fadc_c_min[i] && currentValue != 0){
+            fadc_c_min[i] = currentValue;
+            minIndex = clk;
+        }
+        // Calculate baseline
+        if (clk >= 500 && clk < 1000) {
+            sum += fadc_data[1][clk][i];
+            baseline_cnt++;
+        }
     }
 
+    if (baseline_cnt > 0) {
+        fadc_c_bl[i] = sum / baseline_cnt;
+    } else {
+        fadc_c_bl[i] = 0; // In case there's no data in the range
+    }
+    if (minIndex == -1) continue;
 
-    
+    fadc_c_max[i] = -DBL_MAX;
+    double currentMax = -DBL_MAX; 
+        for(int clk=0; clk < minIndex; clk++){
+        double currentValue = fadc_data[1][clk][i];
+        if(currentValue > currentMax){
+            currentMax = currentValue;
+        }
+    }
+    fadc_c_max[i] = currentMax;
+// 先创建TGraph对象的数组---------------------
+// 创建 TGraph 对象数组并设置横纵轴范围为 0 到 1023
+TGraph *graph_fadc_a[24];
+for (int i = 0; i < 24; ++i) {
+    graph_fadc_a[i] = new TGraph();
+    graph_fadc_a[i]->SetName(Form("graph_fadc_a%d", i));
+    // 填充数据
+    for (int clk = 0; clk < 1025; ++clk) {
+        graph_fadc_a[i]->SetPoint(clk, clk, fadc_data[0][clk][i]);
+    }
+    // 固定横轴范围：0 到 1023
+    graph_fadc_a[i]->GetXaxis()->SetLimits(0, 1023);
+    // 固定纵轴范围：0 到 1023
+    graph_fadc_a[i]->SetMinimum(0);
+    graph_fadc_a[i]->SetMaximum(1023);
+
+    // 设置点的样式和大小
+    graph_fadc_a[i]->SetMarkerStyle(20);
+    graph_fadc_a[i]->SetMarkerSize(0.1);
+}
+
+// 绘制 Anode 图形
+for (int i = 0; i < 24; ++i) {
+    int j = 6 * (i % 4) + i / 4 + 1;
     c1->cd(j);
     gPad->SetTopMargin(0.02);
     gPad->SetBottomMargin(0.12);
     gPad->SetRightMargin(0.04);
     gPad->SetLeftMargin(0.2);
-    gPad->Draw();
-    gPad->SetTicks(1);
-  
-    fadc_a[i]->SetStats(kFALSE);
-    fadc_a[i]->GetXaxis()->SetLabelSize(0.05);
-    fadc_a[i]->GetYaxis()->SetLabelSize(0.05);
-    fadc_a[i]->SetLineColor(1);
-    fadc_a[i]->Draw();
+    graph_fadc_a[i]->Draw("AL");
     title->DrawLatex(50, 1750, "Anode");
-    title->DrawLatex(50, 1860, Form("Run%d, eve%d", runno, evtcnt));  
-      
-      
+    title->DrawLatex(50, 1860, Form("Run%d, eve%d", runno, evtcnt));
+}
+
+// 创建 TGraph 对象数组并设置横纵轴范围为 0 到 1023
+TGraph *graph_fadc_c[24];
+for (int i = 0; i < 24; ++i) {
+    graph_fadc_c[i] = new TGraph();
+    graph_fadc_c[i]->SetName(Form("graph_fadc_c%d", i));
+    for (int clk = 0; clk < 1025; ++clk) {
+        graph_fadc_c[i]->SetPoint(clk, clk, fadc_data[1][clk][i]);
+    }
+    // 固定横轴范围：0 到 1023
+    graph_fadc_c[i]->GetXaxis()->SetLimits(0, 1023);
+    // 固定纵轴范围：0 到 1023
+    graph_fadc_c[i]->SetMinimum(0);
+    graph_fadc_c[i]->SetMaximum(1023);
+
+    // 设置点的样式和大小
+    graph_fadc_c[i]->SetMarkerStyle(20);
+    graph_fadc_c[i]->SetMarkerSize(0.1);
+}
+
+// 绘制 Cathode 图形
+for (int i = 0; i < 24; ++i) {
+    int j = 6 * (i % 4) + i / 4 + 1;
     c2->cd(j);
     gPad->SetTopMargin(0.02);
     gPad->SetBottomMargin(0.12);
     gPad->SetRightMargin(0.04);
     gPad->SetLeftMargin(0.2);
-    gPad->Draw();
-    gPad->SetTicks(1);
-  
-      
-    fadc_c[i]->SetStats(kFALSE);
-    fadc_c[i]->GetXaxis()->SetLabelSize(0.05);
-    fadc_c[i]->GetYaxis()->SetLabelSize(0.05);
-    fadc_c[i]->SetLineColor(1);
-    fadc_c[i]->Draw();
+    graph_fadc_c[i]->Draw("AL");
     title->DrawLatex(50, 1750, "Cathode");
-    title->DrawLatex(50, 1860, Form("Run%d, eve%d", runno, evtcnt));  
+    title->DrawLatex(50, 1860, Form("Run%d, eve%d", runno, evtcnt));
+}
+
+
+c3->cd();
+
+// 设置画布边距
+gPad->SetTopMargin(0.02);
+gPad->SetBottomMargin(0.12);
+gPad->SetRightMargin(0.04);
+gPad->SetLeftMargin(0.2);
+graph_fadc_c[7]->GetXaxis()->SetTitle("50 MHz clock");
+graph_fadc_c[7]->GetYaxis()->SetTitle("FADC_V (ch)");
+graph_fadc_c[7]->GetXaxis()->SetLabelSize(0.05);
+graph_fadc_c[7]->GetYaxis()->SetLabelSize(0.05);
+graph_fadc_c[7]->GetXaxis()->SetTitleSize(0.05);
+graph_fadc_c[7]->GetYaxis()->SetTitleSize(0.05);
+// 绘制阴极的第一个图
+graph_fadc_c[7]->Draw("AL"); // 使用"AP"选项绘制：轴（Axes）和点（Points）
+
+// 绘制标题等
+//title->DrawLatex(50, 1750, "Cathode");
+//title->DrawLatex(50, 1860, Form("Run%d, eve%d", runno, evtcnt));
 
   }
   
 c1->Update();
- c2->Update();
-//  c->Print(Form("%d_%d.png", RunNo, EvtNo));                                       
+ c2->Update();  
+ c3->Update();                                     
+for (int i = 0; i < 24; i++) {
+    std::cout << "Channel " << i << ":" << std::endl;
+    std::cout << "  Minimum Value: " << fadc_c_min[i] << std::endl;
+    std::cout << "  Maximum Value: " << fadc_c_max[i] << std::endl;
+    std::cout << "  Baseline (Avg 500-999ch): " << fadc_c_bl[i] << std::endl;
+    std::cout << std::endl; // For better readability
+} 
+double minVal = *std::min_element(fadc_c_min, fadc_c_min + 11);
+double maxVal = *std::max_element(fadc_c_min, fadc_c_min + 11);
 
+// 计算最大值和最小值的比率
+double ratio = 0;
+if (minVal != 0) {  // 避免除以零
+    ratio = maxVal / minVal;
+} else {
+    std::cout << "Minimum value is zero, cannot compute ratio." << std::endl;
+}
+
+// 输出比率
+std::cout << "Ratio of max to min in fadc_c_min: " << ratio << std::endl;
 }

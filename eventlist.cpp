@@ -1,106 +1,86 @@
-int eventlist(int runno){
-  
-TFile* ifile;
-TTree* tree1;
+int eventlist(int runno) {
 
- int evt_cnt ; 
-  
- unsigned int hit_data_a[24][2048] ={0}; // 768/32
- unsigned int hit_data_c[24][2048] ={0};
+  TFile* ifile;
+  TTree* tree1;
 
- int min_clk_c[768];
- int max_clk_c[768];
- int mean_clk_c1;
- int mean_clk_c2;
-  
- int min_strp_c;
- int max_strp_c;
-  
- unsigned int hit_c[2048][768];  
-  
- ifile = new TFile(Form("./rootfile/MAIKo_%05d.root",runno),"READ");
- tree1 = (TTree*)ifile->Get("tree");
+  int evt_cnt;
 
- ofstream ofs(Form("./run%05d.list",runno));
+  // anode和cathode的数据数组
+  unsigned int hit_data_a[24][2048] = {0}; // anode数据
+  unsigned int hit_data_c[24][2048] = {0}; // cathode数据
 
- tree1->SetBranchAddress("evt_cnt",&evt_cnt);
- // tree1->SetBranchAddress("hit_data_a",hit_data_a);
- tree1->SetBranchAddress("hit_data_c",hit_data_c);
-  
- //tree2->Branch("hit_data_a",hit_data_a,"hit_data_a[2048][24]/i");
- //tree2->Branch("hit_data_c",hit_data_c,"hit_data_c[2048][24]/i");
+  // 打开ROOT文件和树
+  ifile = new TFile(Form("./rootfile/MAIKo_%05d.root", runno), "READ");
+  tree1 = (TTree*)ifile->Get("tree");
 
- for(int ii=0; ii<tree1->GetEntries(); ii++){
+  ofstream ofs(Form("./run%05d.list", runno));
 
- tree1->GetEntry(ii);
-   
-   for(int i=0; i<768; i++){
-     min_clk_c[i] =2048;
-     max_clk_c[i] =0;
-   }
-   
-   min_strp_c =768;
-   max_strp_c =0;
-   
-   for(int ch=0; ch<24; ch++){
-     for(int clk=0; clk<2048; clk++){
-       for(int i=0; i<32; i++){
+  // 设置分支地址
+  tree1->SetBranchAddress("evt_cnt", &evt_cnt);
+  tree1->SetBranchAddress("hit_data_a", hit_data_a);
+  tree1->SetBranchAddress("hit_data_c", hit_data_c);
 
-	 int ch2;
-	 int ch_to_strp;
-	 
-	 ch2 = ((ch/4+1)*4)-(ch%4) -1;
-	 ch_to_strp = (ch2)*32 +i;
+  int nEntries = tree1->GetEntries();
+  for (int ii = 0; ii < nEntries; ii++) {
+    tree1->GetEntry(ii);
 
-	 if( ((hit_data_c[ch][clk]) &((unsigned int)0x1 <<(i))) ==1){
-	   //printf("strp=%d\n",ch_to_strp);
-	   //hit_c[clk][ch_to_strp] =1;
+    // 统计cathode的总像素数
+    int cathode_pixel_count = 0;
+    // 用于标记cathode中每个strip是否hit（用于beam轴区域判断）
+    bool cathode_strip_hit[768] = { false };
 
-	   if(clk < min_clk_c[ch_to_strp]) min_clk_c[ch_to_strp]=clk;
-	   if(clk > max_clk_c[ch_to_strp]) max_clk_c[ch_to_strp]=clk;
+    // 遍历cathode数据：ch, clk, bit
+    for (int ch = 0; ch < 24; ch++) {
+      for (int clk = 0; clk < 2048; clk++) {
+        unsigned int word = hit_data_c[ch][clk];
+        for (int bit = 0; bit < 32; bit++) {
+          if (word & ((unsigned int)1 << bit)) {
+            cathode_pixel_count++;  // 累计像素hit数
+            // 使用给定的转换公式得到strip号
+            int ch2 = ((ch / 4 + 1) * 4) - (ch % 4) - 1;
+            int strip = ch2 * 32 + bit;
+            // 如果strip处于300～500区域，则标记hit
+            if (strip >= 300 && strip <= 500) {
+              cathode_strip_hit[strip] = true;
+            }
+          }
+        }
+      }
+    }
 
-	   if((ch_to_strp > 50) && (ch_to_strp < min_strp_c)) min_strp_c = ch_to_strp;
-	   if(ch_to_strp > max_strp_c) max_strp_c = ch_to_strp;
-	    	  
+    // 统计beam轴区域（300～500）中hit的唯一strip数
+    int cathode_region_hit = 0;
+    for (int strip = 300; strip <= 500; strip++) {
+      if (cathode_strip_hit[strip]) {
+        cathode_region_hit++;
+      }
+    }
 
-	 }	  
-       }
-     }
-   }
-
-   mean_clk_c1 = 0;
-   mean_clk_c2 = 0;
-   
-   //printf("min_strp_c=%d\n",min_strp_c);
-   //printf("max_strp_c=%d\n",max_strp_c);
-
-   mean_clk_c1 = 0.5*(max_clk_c[max_strp_c] + min_clk_c[max_strp_c]) ;
-   mean_clk_c2 = 0.5*(max_clk_c[min_strp_c] + min_clk_c[min_strp_c]) ;
-      
-   //printf("mean[max_strp_c] = %d\n",mean_clk_c1);
-   //printf("mean[min_strp_c] = %d\n",mean_clk_c2);
-   
+    // 处理anode数据，统计总像素hit数
+    int anode_pixel = 0;
+    for (int ch = 0; ch < 24; ch++) {
+      for (int clk = 0; clk < 2048; clk++) {
+        unsigned int word = hit_data_a[ch][clk];
+        for (int bit = 0; bit < 32; bit++) {
+          if (word & ((unsigned int)1 << bit)) {
+            anode_pixel++;
+          }
+        }
+      }
+    }
     
-   int delta_strp;
-   int delta_clk;
-
-   //printf("min, max_strp = %d, %d \n",min_strp_c,max_strp_c);
-   
-   delta_strp =  max_strp_c - min_strp_c;
-   delta_clk = mean_clk_c2 - mean_clk_c1;
-
-   //printf("delta_strp=%d\n", delta_strp);
-   //printf("delta_clk=%d\n", delta_clk);
-
-   //if(delta_strp<700){
-     ofs<<evt_cnt<<endl;
-     //}
-   
- }
- 
+    // 按条件挑选事件：
+    //  - cathode的beam轴区域（300～500）中唯一hit strip数 ≥ 30
+    //  - cathode图像中的像素hit数 > 300
+    //  - anode图像中的像素hit数 > 300
+    if (cathode_region_hit >= 30 && cathode_pixel_count > 300 && anode_pixel > 300) {
+      ofs << evt_cnt << endl;
+    }
+  }
   
- return 0;
+  return 0;
 }
+
 
 
 
