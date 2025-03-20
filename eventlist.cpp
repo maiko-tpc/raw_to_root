@@ -23,6 +23,9 @@ int eventlist(int runno) {
   int nEntries = tree1->GetEntries();
   for (int ii = 0; ii < nEntries; ii++) {
     tree1->GetEntry(ii);
+    if(ii%1000==0){
+      cout<<"prossed data:"<<100*(ii+1)/nEntries<<" %!           \r"<<flush;
+    }
 
     // 统计cathode的总像素数
     int cathode_pixel_count = 0;
@@ -73,7 +76,7 @@ int eventlist(int runno) {
     //  - cathode的beam轴区域（300～500）中唯一hit strip数 ≥ 30
     //  - cathode图像中的像素hit数 > 300
     //  - anode图像中的像素hit数 > 300
-    if (cathode_region_hit >= 30 && cathode_pixel_count > 300 && anode_pixel > 300) {
+    if (cathode_region_hit >= 50 && cathode_pixel_count > 5000 && anode_pixel > 5000) {
       ofs << evt_cnt << endl;
     }
   }
